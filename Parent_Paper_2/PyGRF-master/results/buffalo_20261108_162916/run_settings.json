@@ -1,0 +1,45 @@
+{
+  "model_settings": {
+    "n_estimators": 60,
+    "max_features": 0.3333333333333333,
+    "band_width": 131,
+    "train_weighted": true,
+    "predict_weighted": true,
+    "bootstrap": false,
+    "resampled": true,
+    "random_state": 42
+  },
+  "local_weight": 0.0444,
+  "folds": 10,
+  "shuffle": true,
+  "split_seed": 42,
+  "features": [
+    "snow depth",
+    "% below poverty",
+    "% civilian unemployed",
+    "% capita income",
+    "% no high school",
+    "% 65 older",
+    "% 17 younger",
+    "% household disability",
+    "% single parent household",
+    "% minority",
+    "% not well english",
+    "% multi unit",
+    "% mobile homes",
+    "% crowding",
+    "% no vehicle",
+    "% group quarters",
+    "historical requests",
+    "neighbor historical request"
+  ],
+  "python": "3.10.22",
+  "packages": {
+    "numpy": "2.2.6",
+    "pandas": "2.3.3",
+    "scipy": "1.15.3",
+    "scikit-learn": "1.7.2",
+    "libpysal": "4.13.0",
+    "esda": "2.5.1"
+  }
+}

@@ -1,0 +1,2 @@
+rows,predictors,folds,pooled_RMSE,pooled_R2,total_seconds
+290,18,10,15.485551784300636,0.4204878238391764,159.10914820001926
