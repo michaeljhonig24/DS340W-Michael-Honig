@@ -1,0 +1,61 @@
+{
+  "scope": "Synthetic execution test, NOT reproduction of paper performance",
+  "seed": 42,
+  "features": [
+    "synthetic_wind",
+    "synthetic_rain",
+    "synthetic_vulnerability"
+  ],
+  "use_tuned": false,
+  "clf_params": {
+    "booster": "gbtree",
+    "colsample_bytree": 0.8,
+    "gamma": 0.5,
+    "learning_rate": 0.01,
+    "max_depth": 4,
+    "min_child_weight": 1,
+    "n_estimators": 100,
+    "subsample": 0.8,
+    "verbosity": 0,
+    "random_state": 0,
+    "objective": "binary:logistic",
+    "eval_metric": "logloss"
+  },
+  "reg_params": {
+    "booster": "gbtree",
+    "colsample_bytree": 0.8,
+    "gamma": 0.5,
+    "learning_rate": 0.01,
+    "max_depth": 4,
+    "min_child_weight": 1,
+    "n_estimators": 100,
+    "objective": "reg:squarederror",
+    "eval_metric": "rmse",
+    "subsample": 0.8,
+    "verbosity": 0,
+    "random_state": 0
+  },
+  "u1": 3,
+  "u2": 3,
+  "clf_threshold": 0.5,
+  "model_source_sha256": "c9d21320dd4c38cb89d078fe233b472200f93f56cb1f799b816e8e9eb1685cef",
+  "versions": {
+    "python": "3.11.18",
+    "numpy": "2.4.6",
+    "pandas": "3.1.1",
+    "scikit_learn": "1.9.1",
+    "xgboost": "3.2.0"
+  },
+  "checks": {
+    "Both stages fitted": true,
+    "One prediction per held-out row": true,
+    "Finite predictions and probabilities": true,
+    "Probabilities between zero and one": true,
+    "Default classification follows threshold": true,
+    "Negative classifications produce zero impact": true,
+    "Forced negative gate produces all zeros": true,
+    "Forced positive gate returns regressor predictions": true,
+    "Predictions independent of supplied test labels": true,
+    "Input frames unchanged": true
+  }
+}

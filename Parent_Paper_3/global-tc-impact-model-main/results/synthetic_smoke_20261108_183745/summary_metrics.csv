@@ -1,0 +1,2 @@
+test_type,train_rows,test_rows,synthetic_RMSE,synthetic_R2,seconds,all_checks_passed
+synthetic_smoke_test,900,300,5.883894083836595,0.8743465170110585,1.283413799945265,True

@@ -1,0 +1,266 @@
+import logging
+
+import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
+
+from src.config import INPUT_DIR, OUTPUT_DIR, FEATURES
+from src.evaluation.aggregation import aggregate_output_folder
+from src.evaluation.cv_strategies import run_loocv_pipeline
+from src.models.baselines import (
+    HistoricalModel,
+    WindspeedExposedModel,
+    WindspeedHistoricalModel,
+)
+from src.models.two_stage_glm import TwoStageGLM
+from src.models.two_stage_xgb import TwoStageXGBoost
+
+logger = logging.getLogger(__name__)
+
+
+def _attach_event_date(df):
+    """Attach a single per-event ``date`` column derived from EM-DAT."""
+    emdat = pd.read_csv(INPUT_DIR / "EMDAT" / "emdat.csv")
+    emdat_red = emdat[["DisNo.", "Start Year", "Start Month", "Start Day"]].drop_duplicates()
+    emdat_red["Start Day"] = emdat_red["Start Day"].fillna(1)
+    emdat_red["date"] = pd.to_datetime(
+        dict(
+            year=emdat_red["Start Year"],
+            month=emdat_red["Start Month"],
+            day=emdat_red["Start Day"].astype(int),
+        ),
+        errors="coerce",
+    )
+    # Drop any pre-existing date column to avoid _x/_y collisions during merge.
+    if "date" in df.columns:
+        df = df.drop(columns=["date"])
+    return df.merge(emdat_red[["DisNo.", "date"]], on="DisNo.", how="left")
+
+
+# Columns the training path consumes. The dataset also carries per-cell
+# geometry and other build-time fields that nothing downstream reads; at global
+# coverage they account for the majority of the frame's footprint.
+_TRAINING_COLUMNS = sorted(set(FEATURES) | {
+    "DisNo.", "GID_0", "GID_1", "GID_2", "id", "iso3", "level", "sid", "year",
+    "Total Affected", "perc_affected_pop_grid_region",
+    # Diagnostic, not a predictor: marks cells whose reported impact exceeded
+    # the population it was attributed to and was capped at 100%.
+    "impact_capped",
+    # The basin the cyclone formed in, which the basin-constrained evaluation
+    # restricts training to. It belongs to the storm, not to the country: a
+    # country may be struck from more than one basin.
+    "cyclone_basin",
+})
+
+
+def load_training_dataset(path=None):
+    """Read the training dataset with only the columns the model needs.
+
+    Identifier columns repeat heavily -- 34M rows carry 884 distinct events and
+    68 countries -- so they are read as dictionaries and kept categorical. This
+    is the difference between a frame that fits in memory and one that does not;
+    every groupby over these columns therefore passes observed=True, which
+    matches the behaviour of the equivalent object-dtype groupby.
+    """
+    path = path or INPUT_DIR / "model_input_dataset" / "training_dataset.parquet"
+    available = set(pq.read_schema(path).names)
+    columns = [c for c in _TRAINING_COLUMNS if c in available]
+    missing = [c for c in _TRAINING_COLUMNS if c not in available]
+    if missing:
+        logger.warning(f"Training dataset is missing columns: {missing}")
+    table = pq.read_table(path, columns=columns)
+    # self_destruct frees each Arrow column as it is converted instead of
+    # holding the whole table alongside the DataFrame; without it the Arrow
+    # buffers stay resident and roughly triple the footprint of the load.
+    df = table.to_pandas(strings_to_categorical=True, self_destruct=True)
+    del table
+    pa.default_memory_pool().release_unused()
+    return df
+
+
+def prepare_data(aggregate_to_adm1=False):
+    """Loads dataset, applies subnational filters, and optionally aggregates to ADM1 non-grid level."""
+    df = load_training_dataset()
+    df = df.drop_duplicates().reset_index(drop=True)
+
+    regions = pd.read_csv(INPUT_DIR / "model_input_dataset" / "un_regions.csv")
+    # The region table carries a basin per country, which is not the same
+    # thing as the basin a storm formed in and is absent for several
+    # countries. The dataset's own column is the one to keep.
+    if "cyclone_basin" in regions.columns and "cyclone_basin" in df.columns:
+        regions = regions.drop(columns="cyclone_basin")
+    df = df.merge(regions, on="iso3", how="left")
+
+    # Filter events
+    events_to_consider_c1 = df[df["Total Affected"] > 100]["DisNo."].unique()
+    events_to_consider_c2 = df[df["level"] != "ADM0"]["DisNo."].unique()
+
+    proportions = (
+        df[df["level"] != "ADM0"]
+        .assign(is_affected=lambda x: x["Total Affected"] > 0)
+        .groupby(["DisNo.", "GID_0", "GID_1"], observed=True)["is_affected"].max()
+        .groupby(["DisNo.", "GID_0"], observed=True).mean()
+        .reset_index(name="proportion_affected_gid1")
+    )
+    # Countries with no usable GID_1 breakdown (see dataset_builder.py's national
+    # fallback, e.g. ATG) are evaluated at GID_0 — a single "region" per event is
+    # always 100% affected by construction, so the proportion check doesn't apply.
+    n_gid1_units = df[df["level"] != "ADM0"].groupby("GID_0", observed=True)["GID_1"].nunique()
+    single_region_countries = n_gid1_units[n_gid1_units <= 1].index
+    events_to_consider_c3 = proportions[
+        (proportions.proportion_affected_gid1 < 1) | (proportions.GID_0.isin(single_region_countries))
+    ]["DisNo."].unique()
+    
+    valid_events = list(set(events_to_consider_c1) & set(events_to_consider_c2) & set(events_to_consider_c3))
+    df = df[df["DisNo."].isin(valid_events)].drop_duplicates()
+
+    # Attach event-level date BEFORE aggregation so it can serve as a groupby key.
+    df = _attach_event_date(df).drop_duplicates()
+
+    # Conditionally Aggregate to ADM1
+    if aggregate_to_adm1:
+        agg_dict = {f: "mean" for f in FEATURES if f not in ["wind_speed", "rainfall_max_24h", "population", "N_events_5_years"]}
+        agg_dict.update({
+            "wind_speed": "max",
+            "rainfall_max_24h": "max",
+            "population": "sum",
+            "perc_affected_pop_grid_region": "max",
+            "Total Affected": "max",
+            "N_events_5_years": "max",
+        })
+        groupby_keys = ["DisNo.", "sid", "level", "GID_0", "GID_1", "iso3", "cyclone_basin", "date"]
+        df = df.groupby(groupby_keys, dropna=False, observed=True).agg(agg_dict).reset_index()
+        # A unit can be modelled only where it is one: it needs an identity to
+        # be predicted for, and a population for impact to be a share of. Cells
+        # that fall outside every ADM1 boundary carry no unit to aggregate into.
+        df = df[df["GID_1"].notna() & (df["population"] > 0)]
+
+    return df.drop_duplicates()
+
+
+def execute_training_run(model_name, strategy, aggregate_to_adm1=False,
+                         event_col="DisNo.", exclude_col="sid", recompute=False,
+                         features=None, run_name=None, use_tuned=True):
+    """Orchestrates the data prep and LOOCV execution for a specific model and strategy.
+
+    `event_col` is the unit predicted per fold and `exclude_col` the unit
+    withheld from its training set. The default predicts each country-event,
+    the level impact is reported and evaluated at, while withholding the whole
+    physical cyclone, so a storm's other landfalls cannot train the fold that
+    predicts this one. Setting `exclude_col` to `event_col` restores the
+    round-1 behaviour, where only the record under test was withheld; setting
+    `event_col` to "sid" predicts one row per storm instead of per country.
+
+    `use_tuned=False` ignores data/model_hyperparameters.json and runs the
+    built-in (round-1) fixed configuration -- the attribution runs in
+    RERUN_CHECKLIST.md use it to separate "re-tuned model" from "corrected
+    evaluation" when explaining why headline metrics moved.
+
+    `features` fits the model on a subset of FEATURES, for an ablation; the
+    omitted ones are still loaded, since the target and the fold keys travel
+    with them. `run_name` is appended to the output folder so that a run with
+    a different feature set does not land on top of the full one.
+    """
+    logger.info("--- Starting Run ---")
+    logger.info(f"Model: {model_name}")
+    logger.info(f"Strategy: {strategy}")
+    logger.info(f"Level: {'ADM1' if aggregate_to_adm1 else 'Grid'}")
+    logger.info(f"LOOCV unit: predict {event_col}, withhold {exclude_col or event_col}")
+    logger.info(f"Recompute existing predictions: {recompute}")
+    chosen = list(features or FEATURES)
+    if len(chosen) != len(FEATURES):
+        logger.info(f"Features: {len(chosen)} of {len(FEATURES)}; "
+                    f"omitted {sorted(set(FEATURES) - set(chosen))}")
+
+    df = prepare_data(aggregate_to_adm1=aggregate_to_adm1)
+
+    if event_col not in df.columns:
+        raise ValueError(f"event_col {event_col!r} is not a column of the dataset")
+    if df[event_col].isna().any():
+        raise ValueError(f"rows with a null {event_col} cannot be assigned to a fold")
+
+    if event_col == "sid":
+        # Grouping by physical cyclone only makes sense if each country-event
+        # record belongs to exactly one storm.
+        per_disno = df.groupby("DisNo.")["sid"].nunique()
+        if (per_disno > 1).any():
+            raise ValueError(
+                "these DisNo. map to more than one sid and must be resolved "
+                f"before grouping by cyclone: {sorted(per_disno[per_disno > 1].index)}"
+            )
+
+    events = df[event_col].unique()
+    logger.info(
+        f"{df['sid'].nunique()} physical cyclones / {df['DisNo.'].nunique()} country-event "
+        f"records / {len(df):,} rows -> {len(events)} folds grouped by {event_col}"
+    )
+    if exclude_col and exclude_col != event_col:
+        # Folds whose training set loses more than the record under test,
+        # i.e. the storms that struck more than one country.
+        per_unit = df.groupby(exclude_col, observed=True)[event_col].nunique()
+        shared = int((per_unit > 1).sum())
+        logger.info(
+            f"{shared} of {len(per_unit)} {exclude_col} span several {event_col}; "
+            f"their folds also withhold the siblings"
+        )
+
+    if model_name == "historical":
+        model = HistoricalModel()
+    elif model_name == "windspeed-exposed":
+        model = WindspeedExposedModel()
+    elif model_name == "windspeed-historical":
+        model = WindspeedHistoricalModel()
+    elif model_name == "2-stage-XGBoost":
+        model = TwoStageXGBoost(features=list(features or FEATURES), use_tuned=use_tuned)
+    elif model_name == "2-stage-GLM":
+        # The statistical baseline: same predictors, rows, rebalancing, folds
+        # and aggregation, with logistic and fractional-logit stages instead
+        # of boosted trees. Tuned by src/models/glm_search.py.
+        model = TwoStageGLM(features=list(features or FEATURES), use_tuned=use_tuned)
+    else:
+        raise ValueError(
+            f"Unknown model_name: {model_name}. Allowed: 'historical', "
+            "'windspeed-exposed', 'windspeed-historical', '2-stage-XGBoost', "
+            "'2-stage-GLM'."
+        )
+
+    # A grid-level run is aggregated to ADM1 afterwards and writes that to
+    # <model>_<strategy>_adm1, so a run fitted at ADM1 is kept apart from it:
+    # the two are different models of the same units and would otherwise
+    # overwrite one another.
+    level_str = "adm1_trained" if aggregate_to_adm1 else "grid"
+    output_folder = f"model_output/{model_name}_{strategy}_{level_str}"
+    if run_name:
+        output_folder += f"_{run_name}"
+    if (event_col, exclude_col) != ("DisNo.", "sid"):
+        # Keep a non-default fold definition in its own directory: fold
+        # filenames are built from the predicted unit, so mixing two
+        # definitions would corrupt the resume check and the compiled
+        # predictions file.
+        output_folder += f"_by_{event_col}_excl_{exclude_col or event_col}"
+
+    run_loocv_pipeline(
+        df=df,
+        events=events,
+        model=model,
+        strategy=strategy,
+        output_folder=output_folder,
+        event_col=event_col,
+        exclude_col=exclude_col,
+        recompute=recompute,
+    )
+
+    # Impact is reported per administrative unit, so a grid-level run is
+    # aggregated to ADM1 for evaluation and for comparison against the
+    # baselines. A run already at ADM1 needs no conversion.
+    if not aggregate_to_adm1:
+        adm1_folder = output_folder.replace(f"_{level_str}", "_adm1", 1)
+        n = aggregate_output_folder(OUTPUT_DIR / output_folder,
+                                    OUTPUT_DIR / adm1_folder)
+        logger.info(f"ADM1 predictions for evaluation: {n} events -> {adm1_folder}")
+
+
+if __name__ == "__main__":
+    from src.utils.logging_setup import configure_logging
+    configure_logging()
+    execute_training_run("2-stage-XGBoost", "global", aggregate_to_adm1=True)
