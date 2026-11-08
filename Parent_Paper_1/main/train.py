@@ -39,7 +39,7 @@ lr = 0.00001
 bs = 64
 # start = 189800 #29200*6.5
 # end = 219000 #29200*7.5
-num_epochs = 70
+num_epochs = 5
 set_seed(41)
 
 

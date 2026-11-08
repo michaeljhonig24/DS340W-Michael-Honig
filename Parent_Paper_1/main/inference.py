@@ -144,3 +144,60 @@ print(f"Mean_T_R2: {mean_T_r2:.4f}")
 print(f"Mean_q_R2: {mean_q_r2:.4f}")
 print(f"Mean_t_R2: {mean_t_r2:.4f}")
 print(f"All_MESS: {all_mess:.4f}")
+
+# Export evaluation results.
+from datetime import datetime
+from pathlib import Path
+
+run_dir = (
+    Path(__file__).resolve().parents[1]
+    / "results"
+    / datetime.now().strftime("evaluation_%Y%m%d_%H%M%S")
+)
+run_dir.mkdir(parents=True, exist_ok=True)
+
+cities = ["London", "NewYork", "Shanghai", "Singapore", "SaoPaulo", "Rome"]
+
+pd.DataFrame({
+    "city": cities,
+    "T_RMSE": all_T_rmse,
+    "q_RMSE_g_per_kg": all_q_rmse,
+    "Dew_Point_RMSE_dataset_units": all_t_rmse,
+    "T_R2": all_T_r2,
+    "q_R2": all_q_r2,
+    "Dew_Point_R2": all_t_r2,
+}).to_csv(run_dir / "metrics_by_city.csv", index=False)
+
+for city in cities:
+    actual = y_true_df_splits[city].reset_index(drop=True)
+    predicted = y_pred_df_splits[city].reset_index(drop=True)
+
+    pd.DataFrame({
+        "sample_index": range(len(actual)),
+        "T_reference": actual.iloc[:, 0],
+        "T_prediction": predicted.iloc[:, 0],
+        "q_reference": actual.iloc[:, 1],
+        "q_prediction": predicted.iloc[:, 1],
+        "Dew_Point_reference": actual.iloc[:, 2],
+        "Dew_Point_prediction": predicted.iloc[:, 2],
+    }).to_csv(run_dir / f"{city}_predictions.csv", index=False)
+
+pd.DataFrame([{
+    "Mean_T_RMSE": mean_T_rmse,
+    "Mean_q_RMSE_g_per_kg": mean_q_rmse,
+    "Mean_Dew_Point_RMSE_dataset_units": mean_t_rmse,
+    "Mean_T_R2": mean_T_r2,
+    "Mean_q_R2": mean_q_r2,
+    "Mean_Dew_Point_R2": mean_t_r2,
+    "All_MESS": all_mess,
+}]).to_csv(run_dir / "summary_metrics.csv", index=False)
+
+(run_dir / "notes.txt").write_text(
+    "Reference targets are supplied simulation labels, not observations.\n"
+    "Humidity prediction CSVs retain the original label scale; humidity "
+    "RMSE is exported in g/kg.\n"
+    "Dew_Point physical units/transformation require verification.\n",
+    encoding="utf-8",
+)
+
+print(f"Evaluation files saved to: {run_dir}")
