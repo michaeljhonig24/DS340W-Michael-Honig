@@ -1,0 +1,20 @@
+{
+  "threshold_count": 31.0,
+  "threshold_definition": "2023 75th percentile; high = count >= threshold; held fixed during refit",
+  "depths": {
+    "XGB single-stage": 2,
+    "XGB two-stage": 3
+  },
+  "two_stage_blend_weight": 0.75,
+  "selected_family_on_2024": "Prior-year count baseline",
+  "candidate_depths": [
+    2,
+    3
+  ],
+  "candidate_blend_weights": [
+    0.25,
+    0.5,
+    0.75
+  ],
+  "test_history": "2025 baseline performance was already inspected before this extension; exploratory comparison, not untouched confirmatory test."
+}

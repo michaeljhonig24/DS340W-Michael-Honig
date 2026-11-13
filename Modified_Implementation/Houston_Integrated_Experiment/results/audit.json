@@ -1,0 +1,18 @@
+{
+  "rows_by_year": {
+    "2023": 121,
+    "2024": 121,
+    "2025": 114
+  },
+  "unlisted_outcomes": 16,
+  "unique_zctas": 124,
+  "stations": 5,
+  "all_test_zctas_seen_previously": true,
+  "prior_year_fallback_rows": 1,
+  "workbook_sha256": "eb50459c7cc843c75a8d276b825498cc79dd4747ed79a381b5350c7143afaca9",
+  "python": "3.12.16",
+  "sklearn": "1.8.0",
+  "pandas": "2.2.3",
+  "income_excluded_reason": "ACS vintage dollars are not inflation-adjusted",
+  "hri_reporting_window": "Workbook assigns April-October; original dashboard dates not independently verified here."
+}

@@ -1,0 +1,53 @@
+{
+  "python": "3.12.16",
+  "xgboost": "3.4.1",
+  "sklearn": "1.8.0",
+  "rows_by_year": {
+    "2023": 121,
+    "2024": 121,
+    "2025": 114
+  },
+  "zeros_by_year": {
+    "2023": 0,
+    "2024": 0,
+    "2025": 0
+  },
+  "higher_burden_rows_by_year": {
+    "2023": 31,
+    "2024": 24,
+    "2025": 8
+  },
+  "source_audit": {
+    "rows_by_year": {
+      "2023": 121,
+      "2024": 121,
+      "2025": 114
+    },
+    "unlisted_outcomes": 16,
+    "unique_zctas": 124,
+    "stations": 5,
+    "all_test_zctas_seen_previously": true,
+    "prior_year_fallback_rows": 1,
+    "workbook_sha256": "eb50459c7cc843c75a8d276b825498cc79dd4747ed79a381b5350c7143afaca9",
+    "python": "3.12.16",
+    "sklearn": "1.8.0",
+    "pandas": "2.2.3",
+    "income_excluded_reason": "ACS vintage dollars are not inflation-adjusted",
+    "hri_reporting_window": "Workbook assigns April-October; original dashboard dates not independently verified here."
+  },
+  "features": [
+    "log_population",
+    "age_65_plus_pct",
+    "poverty_pct",
+    "renter_occupied_pct",
+    "mean_daily_max_c",
+    "mean_daily_min_c",
+    "days_max_ge_35c",
+    "total_precipitation_mm",
+    "mean_relative_humidity_pct",
+    "mean_daily_max_heat_index_c",
+    "pct_valid_days_hi_ge_100f"
+  ],
+  "seed": 42,
+  "interpretation": "Published ZIP-year HRI visits, not unique patients, danger, assistance demand or causal risk. Observed seasonal weather; retrospective."
+}

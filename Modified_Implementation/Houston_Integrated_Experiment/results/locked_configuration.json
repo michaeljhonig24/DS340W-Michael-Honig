@@ -1,0 +1,50 @@
+{
+  "configs": {
+    "RF socioeconomic": {
+      "min_samples_leaf": 4
+    },
+    "RF + temperature": {
+      "min_samples_leaf": 8
+    },
+    "RF + heat index": {
+      "min_samples_leaf": 4
+    },
+    "PyGRF + heat index": {
+      "neighbor_fraction": 0.35,
+      "local_weight": 0.25
+    }
+  },
+  "selected_on_2024": "RF socioeconomic",
+  "feature_groups": {
+    "RF socioeconomic": [
+      "log_population",
+      "age_65_plus_pct",
+      "poverty_pct",
+      "renter_occupied_pct"
+    ],
+    "RF + temperature": [
+      "log_population",
+      "age_65_plus_pct",
+      "poverty_pct",
+      "renter_occupied_pct",
+      "mean_daily_max_c",
+      "mean_daily_min_c",
+      "days_max_ge_35c",
+      "total_precipitation_mm"
+    ],
+    "RF + heat index": [
+      "log_population",
+      "age_65_plus_pct",
+      "poverty_pct",
+      "renter_occupied_pct",
+      "mean_daily_max_c",
+      "mean_daily_min_c",
+      "days_max_ge_35c",
+      "total_precipitation_mm",
+      "mean_relative_humidity_pct",
+      "mean_daily_max_heat_index_c",
+      "pct_valid_days_hi_ge_100f"
+    ]
+  },
+  "seed": 42
+}
