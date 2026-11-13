@@ -16,7 +16,3 @@ Validation selected: RF socioeconomic. Its final count RMSE is 11.197. Do not se
 This adapts Parent Paper 2 PyGRF to Houston, with temperature and humidity/heat-index feature ablations and chronological model selection. It does not integrate UCformer or CLMU outputs, and is not a reproduction of the Buffalo results. Report the actual comparison, including negative results.
 
 HRI reporting windows must be confirmed against the original dashboard before final scientific conclusions. Counts are screenshot-transcribed and unlisted counts are unknown, not zero. Evaluation is conditional on published counts, not all ZIPs. Observed seasonal weather makes this retrospective, not a preseason forecast. Shared stations, repeated ZIPs and only three years limit independent evidence. No causal or statistical-significance claim is supported.
-
-## What the completed test shows
-
-All six test R-squared values are negative: none beats the hindsight constant prediction equal to the 2025 test mean in squared error. That test mean is not a deployable preseason baseline. Every model overpredicts the 2025 total. PyGRF plus heat-index features has the lowest test RMSE, but 2024 validation selected socioeconomic RF. These are mixed preliminary results, not consistent improvement. Confirm outcome reporting periods before attributing the lower 2025 counts to weather.
