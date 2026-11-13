@@ -1,0 +1,3 @@
+Reference targets are supplied simulation labels, not observations.
+Humidity prediction CSVs retain the original label scale; humidity RMSE is exported in g/kg.
+Dew_Point physical units/transformation require verification.
